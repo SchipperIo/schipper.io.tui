@@ -1,0 +1,42 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # This repo restores Schipper.Io.Ansi from ../nuget.cache, not nuget.org.
+      # Pack the Ansi repo into that feed before testing. Same-org private
+      # repos need the Actions setting that lets GITHUB_TOKEN read them.
+      - name: Checkout Schipper.Io.Ansi
+        uses: actions/checkout@v7
+        with:
+          repository: SchipperIo/schipper.io.ansi
+          path: .deps/schipper.io.ansi
+
+      - name: Pack Schipper.Io.Ansi into the local feed
+        working-directory: .deps/schipper.io.ansi
+        run: |
+          bash ./build.sh -p
+          feed="$(cd "$GITHUB_WORKSPACE/.." && pwd)/nuget.cache"
+          mkdir -p "$feed"
+          find dist -maxdepth 1 -type f \( -name '*.nupkg' -o -name '*.snupkg' \) -exec cp -f {} "$feed/" \;
+
+      - name: Build and test
+        run: bash ./build.sh -t -p
+
+      - name: Upload package
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuget
+          path: dist/*
+          if-no-files-found: error
